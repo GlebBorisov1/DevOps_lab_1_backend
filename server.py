@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 from __future__ import annotations
 
 import os
@@ -50,7 +48,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type"],
     max_age=600,
 )
@@ -83,6 +81,15 @@ def _append_to_file(text: str) -> None:
             os.fsync(fh.fileno())
 
 
+def _read_file() -> str:
+    with _file_lock:
+        if not DATA_FILE.exists():
+            return ""
+        with open(DATA_FILE, "r", encoding="utf-8") as fh:
+            return fh.read()
+
+
+
 @app.post("/api/data")
 async def save_data(payload: MessagePayload):
     try:
@@ -93,6 +100,25 @@ async def save_data(payload: MessagePayload):
             detail=f"Не удалось сохранить данные: {exc.strerror or exc}",
         )
     return {"status": "ok", "message": "Данные сохранены"}
+
+
+@app.get("/api/data")
+async def get_data():
+    try:
+        content = await run_in_threadpool(_read_file)
+    except OSError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Не удалось прочитать данные: {exc.strerror or exc}",
+        )
+
+    if not content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Записи в файле отсутствуют",
+        )
+
+    return {"status": "ok", "content": content}
 
 
 if __name__ == "__main__":
